@@ -35,7 +35,16 @@ Fedora: `sudo dnf install python3-gobject gtk4 libadwaita geoclue2-libs`
 (GTK ≥ 4.10, libadwaita ≥ 1.6). Use the **system** Python (`/usr/bin/python3`), because PyGObject
 comes from the distribution.
 
-## Run
+## Install (RPM)
+
+```sh
+make rpm
+sudo dnf install build/rpm/RPMS/noarch/wxgtk-*.noarch.rpm
+```
+
+Prebuilt RPMs are attached to [GitHub releases](https://github.com/kernelzeroday/wxgtk/releases).
+
+## Run from source
 
 ```sh
 make run          # or: /usr/bin/python3 -m wxgtk

@@ -53,7 +53,7 @@ class WeatherApp(Adw.Application):
             developer_name="wxgtk contributors",
             comments="A GTK4 weather app.\n\nForecast and air quality data by Open-Meteo.com (CC BY 4.0). "
                      "Place names for your current location by OpenStreetMap Nominatim.",
-            website="https://open-meteo.com",
+            website="https://github.com/kernelzeroday/wxgtk",
         )
         about.present(self._window())
 

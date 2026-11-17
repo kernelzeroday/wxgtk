@@ -18,3 +18,13 @@ install:
 
 uninstall:
 	rm -rf $(PREFIX)/share/wxgtk $(PREFIX)/bin/wxgtk $(PREFIX)/share/applications/io.github.wxgtk.Weather.desktop
+
+VERSION := $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' wxgtk/__init__.py)
+RPMTOP := $(CURDIR)/build/rpm
+
+.PHONY: rpm
+rpm:
+	mkdir -p $(RPMTOP)/SOURCES
+	git archive --format=tar.gz --prefix=wxgtk-$(VERSION)/ -o $(RPMTOP)/SOURCES/wxgtk-$(VERSION).tar.gz HEAD
+	rpmbuild -ba --define "_topdir $(RPMTOP)" packaging/wxgtk.spec
+	@find $(RPMTOP)/RPMS $(RPMTOP)/SRPMS -name '*.rpm'
