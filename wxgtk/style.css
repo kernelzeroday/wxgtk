@@ -1,0 +1,78 @@
+/* Content area always sits on the animated sky, so text is white. */
+.weather-view,
+.weather-view statuspage {
+  color: white;
+}
+
+.wx-content headerbar.wx-header {
+  background: none;
+  box-shadow: none;
+  color: white;
+}
+
+.weather-view label {
+  text-shadow: 0 1px 2px alpha(black, 0.18);
+}
+
+.hero-name { font-size: 32px; font-weight: 500; }
+.hero-temp { font-size: 96px; font-weight: 200; margin-left: 24px; line-height: 1.0; }
+.hero-cond { font-size: 20px; font-weight: 600; opacity: 0.9; }
+.hero-hilo { font-size: 20px; font-weight: 600; }
+
+.wx-card,
+button.flat.wx-card {
+  background-color: alpha(black, 0.16);
+  border-radius: 16px;
+  padding: 12px 14px;
+  color: inherit;
+  font-weight: normal;
+  box-shadow: none;
+  transition: background-color 150ms ease-out;
+}
+button.flat.wx-card:hover { background-color: alpha(black, 0.22); }
+button.flat.wx-card:active { background-color: alpha(black, 0.28); }
+
+.card-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
+}
+
+.tile-value { font-size: 32px; font-weight: 500; }
+.tile-value-sm { font-size: 24px; font-weight: 500; }
+.tile-sub { font-size: 17px; font-weight: 600; }
+.tile-caption { font-size: 13px; }
+.dim { opacity: 0.62; }
+
+separator.wx-sep {
+  background-color: alpha(white, 0.18);
+  min-height: 1px;
+}
+
+.hour-time { font-size: 13px; font-weight: 600; }
+.hour-temp { font-size: 18px; font-weight: 600; }
+.hour-event { font-size: 13px; font-weight: 600; }
+.precip-chance { color: #a8d8ff; font-size: 11px; font-weight: 800; min-height: 14px; }
+
+button.flat.day-row {
+  padding: 6px 4px;
+  border-radius: 8px;
+  color: inherit;
+  font-weight: normal;
+}
+.day-name { font-size: 17px; font-weight: 600; }
+.day-temp { font-size: 17px; font-weight: 600; }
+
+.side-temp { font-size: 26px; font-weight: 300; }
+
+.weather-view scrollbar trough { background: none; }
+
+/* Detail dialog */
+.chart-card { padding: 12px; }
+.fact { padding: 10px 12px; }
+button.circular-day { padding: 4px 0; border-radius: 12px; min-width: 40px; }
+button.circular-day:checked {
+  background-color: var(--accent-bg-color);
+  color: var(--accent-fg-color);
+}
