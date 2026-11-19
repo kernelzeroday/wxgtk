@@ -74,3 +74,35 @@ def icon(code, is_day=True):
 
 def kind(code):
     return lookup(code)[3]
+
+
+# Precipitation intensity for the sky animation: 0 light, 1 moderate, 2 heavy.
+_INTENSITY = {
+    51: 0, 53: 1, 55: 2, 56: 0, 57: 1,
+    61: 0, 63: 1, 65: 2, 66: 0, 67: 2,
+    71: 0, 73: 1, 75: 2, 77: 0,
+    80: 0, 81: 1, 82: 2, 85: 0, 86: 2,
+    95: 1, 96: 1, 99: 2,
+}
+_FREEZING = {56, 57, 66, 67}
+_HAIL = {96, 99}
+
+
+def intensity(code):
+    try:
+        return _INTENSITY.get(int(code), 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def variant(code):
+    """'freezing', 'hail' or None — extra detail the sky animation shows."""
+    try:
+        code = int(code)
+    except (TypeError, ValueError):
+        return None
+    if code in _FREEZING:
+        return "freezing"
+    if code in _HAIL:
+        return "hail"
+    return None

@@ -8,7 +8,7 @@ from gi.repository import Adw, Gdk, GLib, Gtk
 
 from . import api, codes, config as cfg, geoloc, text
 from .detail import DetailDialog
-from .drawing import SkyBackground
+from .drawing import SkyBackground, sky_wind
 from .model import Weather
 from .prefs import PreferencesDialog
 from .view import WeatherView, clear, label
@@ -624,7 +624,10 @@ class WeatherWindow(Adw.ApplicationWindow):
                 self.loading_label.set_label(f"Loading forecast for {loc.name}…")
                 self.content_stack.set_visible_child_name("loading")
             return
-        self.sky.set_condition(codes.kind(w.c("weather_code")), w.is_day)
+        code = w.c("weather_code")
+        self.sky.set_condition(codes.kind(code), w.is_day, intensity=codes.intensity(code),
+                               variant=codes.variant(code),
+                               wind=sky_wind(w.c("wind_speed_10m", 0), w.c("wind_direction_10m")))
         adj = self.scroller.get_vadjustment()
         pos = adj.get_value() if keep_scroll else 0
         self.view.update(loc, w, self.config.units)

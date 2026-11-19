@@ -154,10 +154,30 @@ SKY = {
 }
 
 
-class SkyBackground(_Area):
-    """Gradient sky with lightweight particle effects (rain, snow, stars, clouds)."""
+def sky_wind(speed_kmh, direction_deg):
+    """Horizontal wind for the sky animation, -1 (blowing left) .. 1 (blowing right).
 
-    FRAME_US = 33_000
+    Meteorological direction is where the wind comes *from*: a westerly (270°) blows to the right.
+    """
+    if not speed_kmh or direction_deg is None:
+        return 0.0
+    try:
+        dx = -math.sin(math.radians(float(direction_deg)))
+        return max(-1.0, min(1.0, dx * float(speed_kmh) / 50.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+class SkyBackground(_Area):
+    """Gradient sky with lightweight particle effects (rain, snow, hail, stars, clouds, sun rays)."""
+
+    FRAME_US = 33_000       # ~30 fps for precipitation
+    SLOW_FRAME_US = 66_000  # ~15 fps for slow scenes (stars, sun rays, clouds only)
+
+    # particle counts per intensity (light, moderate, heavy)
+    RAIN_COUNT = (45, 110, 190)
+    STORM_COUNT = (130, 160, 220)
+    SNOW_COUNT = (50, 110, 190)
 
     def __init__(self):
         super().__init__()
@@ -166,6 +186,11 @@ class SkyBackground(_Area):
         self.set_can_target(False)
         self.kind = "clear"
         self.is_day = True
+        self.intensity = 1
+        self.variant = None
+        self.wind = 0.0
+        self._aspect = 0.6  # height / width, updated on draw
+        self._state = None
         self._rng = random.Random(7)
         self._tick_id = 0
         self._last = 0
@@ -173,6 +198,7 @@ class SkyBackground(_Area):
         self._t = 0.0
         self._flash = 0.0
         self._particles = []
+        self._hail = []
         self._clouds = []
         self._stars = [(self._rng.random(), self._rng.random() * 0.6, self._rng.random() * 6.28,
                         0.6 + self._rng.random() * 1.2) for _ in range(90)]
@@ -185,28 +211,47 @@ class SkyBackground(_Area):
         self._animations = settings.props.gtk_enable_animations
         self._update_tick()
 
-    def set_condition(self, kind, is_day):
-        if (kind, is_day) == (self.kind, self.is_day) and (self._particles or self._clouds):
+    def set_condition(self, kind, is_day, intensity=1, variant=None, wind=0.0):
+        # Wind alone changes often between refreshes; adjust it without reseeding particles.
+        self.wind = wind
+        state = (kind, is_day, intensity, variant)
+        if state == self._state:
+            self.queue_draw()
             return
-        self.kind, self.is_day = kind, is_day
+        self._state = state
+        self.kind, self.is_day, self.intensity, self.variant = kind, is_day, intensity, variant
         rng = self._rng
+        lvl = max(0, min(2, intensity))
         self._particles = []
+        self._hail = []
         if kind in ("rain", "storm"):
-            n = 160 if kind == "storm" else 110
-            self._particles = [[rng.random(), rng.random(), 0.9 + rng.random() * 0.8, 10 + rng.random() * 14]
-                               for _ in range(n)]
+            n = (self.STORM_COUNT if kind == "storm" else self.RAIN_COUNT)[lvl]
+            speed = (0.75, 1.0, 1.25)[lvl]
+            length = (0.7, 1.0, 1.3)[lvl]
+            self._particles = [[rng.random(), rng.random(), (0.9 + rng.random() * 0.8) * speed,
+                                (10 + rng.random() * 14) * length] for _ in range(n)]
+            if variant == "hail":
+                self._hail = [[rng.random(), rng.random(), 1.6 + rng.random() * 0.8,
+                               1.2 + rng.random() * (1.0 + 0.6 * lvl)] for _ in range(20 + 15 * lvl)]
         elif kind == "snow":
             self._particles = [[rng.random(), rng.random(), 0.04 + rng.random() * 0.06,
-                                1.2 + rng.random() * 2.4, rng.random() * 6.28] for _ in range(110)]
-        n_clouds = {"partly": 4, "cloudy": 7, "fog": 8, "rain": 6, "storm": 6, "snow": 5}.get(kind, 0)
+                                1.2 + rng.random() * 2.4, rng.random() * 6.28]
+                               for _ in range(self.SNOW_COUNT[lvl])]
+        n_clouds = {"partly": 4, "cloudy": 7, "fog": 8, "rain": 5 + lvl, "storm": 6 + lvl,
+                    "snow": 4 + lvl}.get(kind, 0)
         self._clouds = [[rng.random() * 1.4 - 0.2, rng.random() * 0.45, 0.18 + rng.random() * 0.22,
                          0.004 + rng.random() * 0.01] for _ in range(n_clouds)]
         self._update_tick()
         self.queue_draw()
 
+    def _sunny(self):
+        return self.is_day and self.kind in ("clear", "partly")
+
     def _wants_animation(self):
-        return self._animations and (self._particles or self._clouds or
-                                     (self.kind in ("clear", "partly") and not self.is_day))
+        return self._animations and (self._particles or self._clouds or self.kind in ("clear", "partly"))
+
+    def _frame_us(self):
+        return self.FRAME_US if self._particles else self.SLOW_FRAME_US
 
     def _update_tick(self):
         if self._wants_animation() and not self._tick_id:
@@ -217,44 +262,70 @@ class SkyBackground(_Area):
             self._tick_id = 0
             self.queue_draw()
 
+    @staticmethod
+    def _wrap_x(p):
+        if p[0] > 1.1:
+            p[0] -= 1.2
+        elif p[0] < -0.1:
+            p[0] += 1.2
+
     def _on_tick(self, _widget, clock):
         now = clock.get_frame_time()
         if self._last == 0:
             self._last = now
             return True
-        if now - self._last_draw < self.FRAME_US:
+        if now - self._last_draw < self._frame_us():
             return True
         dt = min(0.1, (now - self._last) / 1e6)
         self._last = now
         self._last_draw = now
         self._t += dt
+        drift = self._drift() * self._aspect  # screen slant -> normalized x per normalized y
         if self.kind in ("rain", "storm"):
             for p in self._particles:
                 p[1] += p[2] * dt
-                p[0] += p[2] * dt * 0.08
+                p[0] += p[2] * dt * drift
                 if p[1] > 1.05:
                     p[1] = -0.05
                     p[0] = self._rng.random()
+                self._wrap_x(p)
+            for p in self._hail:
+                p[1] += p[2] * dt
+                p[0] += p[2] * dt * drift * 0.6
+                if p[1] > 1.05:
+                    p[1] = -0.05
+                    p[0] = self._rng.random()
+                self._wrap_x(p)
             if self.kind == "storm":
                 self._flash = max(0.0, self._flash - dt * 2.5)
-                if self._rng.random() < dt * 0.12:
+                if self._rng.random() < dt * (0.08, 0.12, 0.2)[max(0, min(2, self.intensity))]:
                     self._flash = 0.55
         elif self.kind == "snow":
             for p in self._particles:
                 p[1] += p[2] * dt
                 p[4] += dt
-                p[0] += math.sin(p[4]) * 0.0008
+                p[0] += math.sin(p[4]) * 0.0008 + self.wind * 0.06 * dt * self._aspect
                 if p[1] > 1.02:
                     p[1] = -0.02
                     p[0] = self._rng.random()
+                self._wrap_x(p)
+        cloud_dir = -1.0 if self.wind < -0.05 else 1.0
+        cloud_boost = 1.0 + abs(self.wind) * 2.0
         for c in self._clouds:
-            c[0] += c[3] * dt
-            if c[0] - c[2] > 1.2:
+            c[0] += c[3] * dt * cloud_dir * cloud_boost
+            if cloud_dir > 0 and c[0] - c[2] > 1.2:
                 c[0] = -c[2] - 0.2
+            elif cloud_dir < 0 and c[0] + c[2] < -0.2:
+                c[0] = 1.2 + c[2]
         self.queue_draw()
         return True
 
+    def _drift(self):
+        """Horizontal travel per unit of fall: a light baseline slant plus the wind."""
+        return 0.08 + self.wind * 0.45 if abs(self.wind) > 0.02 else 0.08
+
     def draw(self, cr, w, h):
+        self._aspect = h / max(w, 1)
         top, bottom = SKY.get((self.kind, self.is_day), SKY[("clear", True)])
         grad = cairo.LinearGradient(0, 0, 0, h)
         grad.add_color_stop_rgb(0, *top)
@@ -262,12 +333,28 @@ class SkyBackground(_Area):
         cr.set_source(grad)
         cr.paint()
 
-        if self.kind in ("clear", "partly") and self.is_day:
-            glow = cairo.RadialGradient(w * 0.85, -h * 0.05, 0, w * 0.85, -h * 0.05, max(w, h) * 0.55)
+        if self._sunny():
+            sx, sy = w * 0.85, -h * 0.05
+            reach = max(w, h) * 0.55
+            glow = cairo.RadialGradient(sx, sy, 0, sx, sy, reach)
             glow.add_color_stop_rgba(0, 1, 0.97, 0.85, 0.45)
             glow.add_color_stop_rgba(1, 1, 0.97, 0.85, 0)
             cr.set_source(glow)
             cr.paint()
+            # slowly turning, gently breathing sun rays
+            strength = 0.07 if self.kind == "clear" else 0.04
+            rays = cairo.RadialGradient(sx, sy, 0, sx, sy, reach * 1.25)
+            rays.add_color_stop_rgba(0, 1, 0.98, 0.88, strength * (0.8 + 0.2 * math.sin(self._t * 0.6)))
+            rays.add_color_stop_rgba(1, 1, 0.98, 0.88, 0)
+            cr.set_source(rays)
+            n = 14
+            spin = self._t * 0.025
+            for i in range(n):
+                a = spin + i * 2 * math.pi / n
+                cr.move_to(sx, sy)
+                cr.arc(sx, sy, reach * 1.25, a, a + math.pi / n * 0.55)
+                cr.close_path()
+            cr.fill()
 
         if not self.is_day and self.kind in ("clear", "partly"):
             for x, y, phase, size in self._stars:
@@ -289,14 +376,31 @@ class SkyBackground(_Area):
             cr.fill()
 
         if self.kind in ("rain", "storm"):
-            cr.set_line_width(1.2)
+            slant = self._drift()  # matches the on-screen motion set up in _on_tick
+            lvl = max(0, min(2, self.intensity))
             cr.set_line_cap(cairo.LINE_CAP_ROUND)
-            cr.set_source_rgba(0.85, 0.9, 1.0, 0.32)
+            if self.variant == "freezing":
+                cr.set_line_width(1.4)
+                cr.set_source_rgba(0.92, 0.97, 1.0, 0.45)
+            else:
+                cr.set_line_width((1.0, 1.2, 1.4)[lvl])
+                cr.set_source_rgba(0.85, 0.9, 1.0, (0.26, 0.32, 0.38)[lvl])
             for x, y, _speed, length in self._particles:
                 px, py = x * w, y * h
                 cr.move_to(px, py)
-                cr.line_to(px - length * 0.08, py - length)
+                cr.line_to(px - length * slant, py - length)
             cr.stroke()
+            if self.variant == "freezing":
+                # tiny ice glints at the head of each drop
+                cr.set_source_rgba(1, 1, 1, 0.55)
+                for x, y, _speed, _length in self._particles[::3]:
+                    cr.arc(x * w, y * h, 1.1, 0, 2 * math.pi)
+                    cr.fill()
+            if self._hail:
+                cr.set_source_rgba(0.95, 0.97, 1.0, 0.8)
+                for x, y, _speed, r in self._hail:
+                    cr.arc(x * w, y * h, r, 0, 2 * math.pi)
+                    cr.fill()
         elif self.kind == "snow":
             cr.set_source_rgba(1, 1, 1, 0.75)
             for x, y, _s, r, _ph in self._particles:
