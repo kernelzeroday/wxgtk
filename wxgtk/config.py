@@ -1,11 +1,14 @@
 """Persistent settings and a small on-disk cache of the last forecast per location."""
 
 import json
+import logging
 import os
 from pathlib import Path
 
 from .api import Location
 from .units import Units
+
+log = logging.getLogger(__name__)
 
 
 def _xdg(var, fallback):
@@ -35,14 +38,18 @@ class Config:
     def load(self):
         try:
             data = json.loads(CONFIG_FILE.read_text())
-        except (OSError, ValueError):
+        except FileNotFoundError:
+            return
+        except (OSError, ValueError) as e:
+            log.error("Can't read config %s: %s", CONFIG_FILE, e)
             return
         self.units = Units.from_dict(data.get("units"))
         self.locations = []
         for d in data.get("locations", []):
             try:
                 self.locations.append(Location.from_dict(d))
-            except (KeyError, TypeError, ValueError):
+            except (KeyError, TypeError, ValueError) as e:
+                log.warning("Skipping bad location entry %r: %s", d, e)
                 continue
         self.selected = int(data.get("selected", 0) or 0)
         self.use_current_location = bool(data.get("use_current_location", False))
@@ -63,12 +70,15 @@ def cache_path(loc_id):
 def save_cache(loc_id, raw):
     try:
         _atomic_write(cache_path(loc_id), raw)
-    except OSError:
-        pass
+    except OSError as e:
+        log.warning("Can't write cache for %s: %s", loc_id, e)
 
 
 def load_cache(loc_id):
     try:
         return json.loads(cache_path(loc_id).read_text())
-    except (OSError, ValueError):
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        log.warning("Can't read cache for %s: %s", loc_id, e)
         return None

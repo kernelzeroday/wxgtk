@@ -2,11 +2,14 @@
 
 from dataclasses import asdict, dataclass
 import json
+import logging
 import time
 import urllib.parse
 import urllib.request
 
 from . import VERSION
+
+log = logging.getLogger(__name__)
 
 USER_AGENT = f"wxgtk/{VERSION} (GTK4 weather app)"
 
@@ -89,10 +92,16 @@ def _get_json(url, params, timeout=20):
             reason = json.load(e).get("reason", str(e))
         except Exception:
             reason = str(e)
+        log.warning("GET %s -> HTTP %s: %s", url, e.code, reason)
         raise ApiError(reason) from e
     except (urllib.error.URLError, TimeoutError, OSError) as e:
+        log.warning("GET %s -> network error: %r", url, getattr(e, "reason", e))
         raise ApiError(f"Network error: {getattr(e, 'reason', e)}") from e
+    except ValueError as e:
+        log.warning("GET %s -> invalid JSON: %s", url, e)
+        raise ApiError(f"Invalid response: {e}") from e
     if isinstance(data, dict) and data.get("error"):
+        log.warning("GET %s -> API error: %s", url, data.get("reason"))
         raise ApiError(data.get("reason", "Unknown API error"))
     return data
 
@@ -129,7 +138,8 @@ def fetch_weather(lat, lon):
     forecast = fetch_forecast(lat, lon)
     try:
         air = fetch_air_quality(lat, lon)
-    except ApiError:
+    except ApiError as e:
+        log.warning("Air quality unavailable for %.4f,%.4f: %s", lat, lon, e)
         air = None
     return {"forecast": forecast, "air": air, "fetched": time.time()}
 
@@ -159,7 +169,8 @@ def reverse_geocode(lat, lon):
             "lat": f"{lat:.4f}", "lon": f"{lon:.4f}", "format": "jsonv2", "zoom": 10,
             "accept-language": "en",
         }, timeout=10)
-    except ApiError:
+    except ApiError as e:
+        log.warning("Reverse geocoding failed for %.4f,%.4f: %s", lat, lon, e)
         return Location("My Location", lat, lon, is_current=True)
     addr = data.get("address", {})
     name = (addr.get("city") or addr.get("town") or addr.get("village")

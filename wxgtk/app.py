@@ -59,4 +59,7 @@ class WeatherApp(Adw.Application):
 
 
 def main():
+    from . import log
+    log.setup()
+    log.log.info("wxgtk %s starting", VERSION)
     return WeatherApp().run(sys.argv)

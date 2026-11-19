@@ -1,5 +1,6 @@
 """Main window: location sidebar + weather content."""
 
+import logging
 import threading
 import time
 
@@ -11,6 +12,8 @@ from .drawing import SkyBackground
 from .model import Weather
 from .prefs import PreferencesDialog
 from .view import WeatherView, clear, label
+
+log = logging.getLogger(__name__)
 
 REFRESH_SECONDS = 10 * 60
 
@@ -421,6 +424,7 @@ class WeatherWindow(Adw.ApplicationWindow):
             try:
                 res, err = api.search_locations(q), None
             except api.ApiError as e:
+                log.warning("Location search for %r failed: %s", q, e)
                 res, err = [], str(e)
             GLib.idle_add(self._on_search_results, serial, res, err)
 
@@ -508,6 +512,7 @@ class WeatherWindow(Adw.ApplicationWindow):
             except api.ApiError as e:
                 raw, err = None, str(e)
             except Exception as e:  # unexpected parse failure etc.
+                log.exception("Unexpected error fetching weather for %s", loc.name)
                 raw, err = None, f"Unexpected error: {e}"
             GLib.idle_add(self._on_fetched, loc, raw, err)
 
@@ -521,13 +526,17 @@ class WeatherWindow(Adw.ApplicationWindow):
             try:
                 self.weathers[loc.id] = Weather(raw)
             except (KeyError, TypeError) as e:
+                log.exception("Malformed weather response for %s", loc.name)
                 raw, err = None, f"Malformed response: {e}"
         if raw is not None:
+            if loc.id in self.errors:
+                log.info("Weather for %s recovered", loc.name)
             self.errors.pop(loc.id, None)
             if any(l.id == loc.id for l in self.config.locations):
                 cfg.save_cache(loc.id, raw)
         else:
             self.errors[loc.id] = err
+            log.error("Weather update failed for %s (%s): %s", loc.name, loc.id, err)
             if is_shown and loc.id in self.weathers:
                 self.toasts.add_toast(Adw.Toast(title=f"Couldn't update: {err}", timeout=4))
         self._rebuild_saved()
@@ -565,6 +574,7 @@ class WeatherWindow(Adw.ApplicationWindow):
 
     def _on_located(self, lat, lon, err):
         if err:
+            log.warning("Current location unavailable: %s", err)
             self.toasts.add_toast(Adw.Toast(title=f"Location unavailable: {err}", timeout=5))
             return
 
